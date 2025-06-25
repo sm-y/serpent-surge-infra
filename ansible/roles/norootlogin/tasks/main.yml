@@ -1,0 +1,2 @@
+# disable root ssh login + restart sshd
+# disables root SSH login

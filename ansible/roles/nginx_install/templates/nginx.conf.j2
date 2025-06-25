@@ -1,0 +1,25 @@
+# nginx config template
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://localhost:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name _;
+
+    ssl_certificate /etc/ssl/certs/selfsigned.crt;
+    ssl_certificate_key /etc/ssl/private/selfsigned.key;
+
+    location /api/ {
+        proxy_pass http://localhost:3000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}

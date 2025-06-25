@@ -1,0 +1,7 @@
+
+# nginx restart handler
+---
+- name: Reload nginx
+  systemd:
+    name: nginx
+    state: reloaded
