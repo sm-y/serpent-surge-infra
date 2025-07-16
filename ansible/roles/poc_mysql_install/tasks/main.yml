@@ -1,0 +1,298 @@
+# roles/poc_mysql_install/tasks/main.yml
+---
+- name: Remove problematic mysql test/debug packages
+  apt:
+    name:
+      - mysql-community-test-debug
+      - mysql-testsuite
+    state: absent
+    purge: yes
+  become: yes
+  ignore_errors: yes
+
+- name: Install debconf-utils package
+  apt:
+    name: debconf-utils
+    state: present
+  become: yes
+
+# Complete MySQL cleanup and fresh installation
+- name: Stop any running MySQL services
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - mysql
+    - mysqld
+  ignore_errors: yes
+  become: yes
+
+- name: Remove all MySQL packages completely
+  apt:
+    name:
+      - "mysql-server*"
+      - "mysql-client*"
+      - "mysql-common"
+      - "mysql-community-*"
+      - "mysql-testsuite*"
+      - "libmysql*"
+    state: absent
+    purge: yes
+    force_apt_get: yes
+  become: yes
+  ignore_errors: yes
+
+# - name: Clean MySQL data directory
+#   file:
+#     path: /var/lib/mysql/*
+#     state: absent
+#   become: yes
+
+- name: Clean MySQL log directory
+  file:
+    path: /var/log/mysql/*
+    state: absent
+  become: yes
+
+- name: Clean MySQL runtime directory
+  file:
+    path: /var/run/mysqld/*
+    state: absent
+  become: yes
+
+- name: Ensure MySQL data directory exists
+  file:
+    path: /var/lib/mysql
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: "0755"
+  become: yes
+
+- name: Ensure MySQL log directory exists
+  file:
+    path: /var/log/mysql
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: "0755"
+  become: yes
+
+- name: Initialize MySQL data directory
+  command: mysqld --initialize-insecure --user=mysql
+  args:
+    creates: /var/lib/mysql/ibdata1
+  become: yes
+
+- name: Clean up package cache after MySQL removal
+  apt:
+    autoclean: yes
+    autoremove: yes
+    force_apt_get: yes
+  become: yes
+
+- name: Enable universe repo
+  apt_repository:
+    repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+    state: present
+  become: yes
+
+- name: Update apt cache explicitly before python3-* install
+  apt:
+    update_cache: yes
+    force_apt_get: yes
+    cache_valid_time: 3600
+  become: yes
+
+# Use system’s pip (pip3) default on Ubuntu 24.04.
+- name: Install Python MySQL dependencies
+  apt:
+    name:
+      - python3-pymysql
+      - python3-mysqldb
+      - python3-venv
+      - python3-distutils-extra
+      - python3-pip
+    state: present
+    force_apt_get: yes
+  become: yes
+
+- name: Create MySQL group
+  group:
+    name: mysql
+    state: present
+  become: yes
+
+- name: Create MySQL user
+  user:
+    name: mysql
+    group: mysql
+    system: yes
+    shell: /bin/false
+    home: /var/lib/mysql
+    create_home: no
+  become: yes
+
+- name: Preseed MySQL root password
+  debconf:
+    name: mysql-server
+    question: mysql-server/root_password
+    value: "{{ mysql_root_password }}"
+    vtype: password
+  become: yes
+
+- name: Preseed MySQL root password confirmation
+  debconf:
+    name: mysql-server
+    question: mysql-server/root_password_again
+    value: "{{ mysql_root_password }}"
+    vtype: password
+  become: yes
+
+- name: Install MySQL server fresh
+  apt:
+    name: mysql-server
+    state: present
+    force_apt_get: yes
+    # update_cache: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  become: yes
+  notify: Restart MySQL
+  # register: mysql_install
+
+- name: Ensure MySQL service is running and enabled
+  systemd:
+    name: mysql
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+# Wait for MySQL port to be open and ready
+- name: Wait for MySQL to be ready
+  wait_for:
+    host: localhost
+    port: 3306
+    delay: 5
+    timeout: 60
+    state: started
+
+# Wait for MySQL server to respond (avoid race conditions)
+- name: Wait for MySQL access
+  shell: mysqladmin ping -uroot -p{{ mysql_root_password }}
+  register: mysql_ping
+  retries: 10
+  delay: 5
+  until: mysql_ping.rc == 0
+
+- name: Set root auth method to mysql_native_password
+  mysql_user:
+    name: root
+    host: localhost
+    password: "{{ mysql_root_password }}"
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    plugin: mysql_native_password
+    priv: "*.*:ALL,GRANT"
+    state: present
+  become: yes
+
+- name: Grant ALL privileges on serpent_surge_db to mysql user
+  community.mysql.mysql_user:
+    name: "{{ mysql_user }}"
+    password: "{{ mysql_user_password }}"
+    priv: "serpent_surge_db.*:ALL"
+    host: "%"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+- name: Grant PROCESS global privilege
+  community.mysql.mysql_user:
+    name: "{{ mysql_user }}"
+    password: "{{ mysql_user_password }}"
+    priv: "*.*:PROCESS"
+    host: "%"
+    state: present
+    append_privs: yes # important to append, not overwrite
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+# Check grants for MySQL application user (debug info)
+- name: Check MySQL user privileges
+  mysql_query:
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    query: "SHOW GRANTS FOR '{{ mysql_user }}'@'%';"
+  register: grants
+
+- debug:
+    var: grants.query_result
+
+# MySQL configuration
+- name: Secure MySQL installation
+  block:
+    - name: Remove anonymous MySQL users
+      mysql_user:
+        name: ""
+        host_all: yes
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      ignore_errors: yes
+
+    - name: Remove MySQL test database
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      ignore_errors: yes
+
+    - name: Create serpent_surge_db database
+      mysql_db:
+        name: serpent_surge_db
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Create scores table
+      mysql_query:
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_db: serpent_surge_db
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        query: |
+          CREATE TABLE IF NOT EXISTS scores (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            score INT NOT NULL,
+            difficulty INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+  become: yes
+
+- name: Ensure MySQL binds to 0.0.0.0 (all interfaces)
+  lineinfile:
+    path: /etc/mysql/mysql.conf.d/mysqld.cnf
+    regexp: "^bind-address"
+    line: "bind-address = 0.0.0.0"
+    backup: yes
+  notify: Restart MySQL
+  become: yes
+
+- name: Display MySQL connection info
+  debug:
+    msg: |
+      MySQL setup completed:
+      - Database: serpent_surge_db
+      - User: {{ mysql_user }}
+      - Root password is set
+      - Service is running on port 3306

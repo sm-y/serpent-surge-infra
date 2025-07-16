@@ -1,0 +1,13 @@
+# /etc/systemd/system/serpent-backup-archive.service
+[Unit]
+Description=Serpent Archive Every 3 Days Service
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=serpentbak
+ExecStart=/data/serpent_backup/archive.sh
+EnvironmentFile=/data/serpent_backup/backup.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+# roles\app_build\tasks\main.yml
+---
+- name: Start MySQL service asynchronously
+  service:
+    name: mysql
+    state: started
+  async: 120
+  poll: 0
+  register: mysql_start_job
+  when: "'dev' in group_names"
+
+- name: Wait for MySQL service to be started
+  async_status:
+    jid: "{{ mysql_start_job.ansible_job_id }}"
+  register: mysql_start_result
+  until: mysql_start_result.finished
+  retries: 12
+  delay: 10
+  when: "'dev' in group_names"
+
+- name: Wait for MySQL port to be open
+  wait_for:
+    host: "{{ mysql_host }}"
+    port: "{{ mysql_port }}"
+    timeout: 300
+  when: "'dev' in group_names"
+
+- import_tasks: deploy_env.yml
+- import_tasks: build.yml
+# - import_tasks: up.yml

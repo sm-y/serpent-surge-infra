@@ -1,0 +1,24 @@
+# playbooks/playbook_poc_mysql.yml
+# It installs MySQL on dev Ubuntu only.
+---
+- name: Local MySQL install for dev-ubuntu
+  hosts: dev
+  connection: local
+  become: yes
+  vars_files:
+    - ../group_vars/dev.yml
+    - ../group_vars/all.yml
+
+  roles:
+    - poc_mysql_install
+
+  post_tasks:
+    - name: Check MySQL service status
+      systemd:
+        name: mysql
+      register: mysql_status
+
+    - name: Report MySQL status
+      debug:
+        msg: >
+          MySQL service is {{ 'running' if mysql_status.status.ActiveState == 'active' else 'NOT running' }}

@@ -1,0 +1,13 @@
+# /etc/systemd/system/serpent-backup.service
+[Unit]
+Description=Serpent Backup Daily Service
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=serpentbak
+ExecStart=/data/serpent_backup/dbbackup.sh backup
+EnvironmentFile=/data/serpent_backup/backup.env
+
+[Install]
+WantedBy=multi-user.target

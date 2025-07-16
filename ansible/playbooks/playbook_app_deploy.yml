@@ -1,0 +1,9 @@
+---
+# serpent-surge-infra/ansible/playbooks/playbook_app_deploy.yml
+# the pull & container start on prod host
+- hosts: all
+  become: yes
+  gather_facts: no
+  roles:
+    - app_run
+  tags: ["deploy-containers"]

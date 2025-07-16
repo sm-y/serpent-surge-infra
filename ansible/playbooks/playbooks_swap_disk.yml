@@ -1,0 +1,14 @@
+# playbooks/playbooks_swap_disk.yml
+---
+- hosts: prod
+  become: yes
+  roles:
+    - setup_swap_disk
+
+  tasks:
+    - name: Reboot after disk and swap config
+      ansible.builtin.reboot:
+
+    - name: Wait for host after reboot
+      ansible.builtin.wait_for_connection:
+        timeout: 300

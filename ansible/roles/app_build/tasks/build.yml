@@ -1,0 +1,111 @@
+# roles\app_build\tasks\build.yml
+# npm install → npm build → docker build
+# Build images in a dedicated build environment (dev Ubuntu)
+---
+- name: Stop all running containers
+  shell: docker stop $(docker ps -q)
+  ignore_errors: yes
+  become: yes
+  tags: cleanup
+
+- name: Remove all containers
+  shell: docker rm $(docker ps -aq)
+  ignore_errors: yes
+  become: yes
+  tags: cleanup
+
+- name: Prune all unused Docker objects (images, containers, caches)
+  community.docker.docker_prune:
+    containers: yes
+    images: yes
+    networks: yes
+    volumes: yes
+    builder_cache: yes
+  become: yes
+  tags: cleanup
+
+# Dev: frontend + MySQL host
+- name: Build frontend Docker image (dev)
+  community.docker.docker_image:
+    source: build
+    build:
+      path: "{{ docker_frontend_path }}"
+      nocache: yes
+      pull: yes
+    name: serpent-frontend-dev
+    tag: latest
+    state: present
+  when: build_env == "dev"
+  tags: build-dev
+
+# Dev: backend + MySQL host
+- name: Build backend Docker image (dev)
+  community.docker.docker_image:
+    source: build
+    build:
+      path: "{{ docker_backend_path }}"
+      nocache: yes
+      pull: yes
+    name: serpent-backend-dev
+    tag: latest
+    state: present
+  when: build_env == "dev"
+  tags: build-dev
+
+# Prod: backend + RDS + ECR Login
+- name: Login to AWS ECR
+  shell: |
+    aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 510612307309.dkr.ecr.eu-north-1.amazonaws.com
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  become: yes
+  when: build_env == "prod"
+  tags: build-prod
+
+# Prod: frontend + RDS
+- name: Build frontend Docker image for ECR
+  community.docker.docker_image:
+    source: build
+    build:
+      path: "{{ docker_frontend_path }}"
+      nocache: yes
+    name: serpent-repo-frontend
+    tag: latest
+    state: present
+  when: build_env == "prod"
+  tags: build-prod
+
+- name: Tag frontend image for ECR
+  command: docker tag serpent-repo-frontend:latest {{ frontend_ecr_uri }}:latest
+  when: build_env == "prod"
+  tags: build-prod
+
+- name: Push frontend image to ECR
+  command: docker push {{ frontend_ecr_uri }}:latest
+  when: build_env == "prod"
+  tags: build-prod
+
+# Prod: backend + RDS
+- name: Build backend Docker image for ECR
+  community.docker.docker_image:
+    source: build
+    build:
+      path: "{{ docker_backend_path }}"
+      nocache: yes
+    name: serpent-repo-backend
+    tag: latest
+    state: present
+  when: build_env == "prod"
+  tags: build-prod
+
+- name: Tag backend image for ECR
+  command: docker tag serpent-repo-backend:latest {{ backend_ecr_uri }}:latest
+  when: build_env == "prod"
+  tags: build-prod
+
+- name: Push backend image to ECR
+  command: docker push {{ backend_ecr_uri }}:latest
+  when: build_env == "prod"
+  tags: build-prod

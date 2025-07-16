@@ -1,2 +1,20 @@
-# Linux system users (e.g., created via `useradd`).
-
+# roles/users/tasks/main.yml
+# ---
+# - name: Create serpentbak system user
+#   user:
+#     name: serpentbak
+#     system: yes
+#     shell: /usr/sbin/nologin
+#     state: present
+# 
+# - name: Disable root SSH login
+#   lineinfile:
+#     path: /etc/ssh/sshd_config
+#     regexp: "^PermitRootLogin"
+#     line: "PermitRootLogin no"
+#     backup: yes
+# 
+# - name: Restart SSH to apply root login disable
+#   service:
+#     name: ssh
+#     state: restarted

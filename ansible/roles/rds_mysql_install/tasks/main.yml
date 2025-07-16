@@ -1,0 +1,53 @@
+# roles/rds_mysql_install/tasks/main.yml
+---
+- name: Install python3-pip
+  apt:
+    name: python3-pip
+    state: present
+  become: yes
+
+- name: Show python and pip info
+  ansible.builtin.shell: "python3 -m pip list | grep -E 'PyMySQL|mysqlclient'"
+  register: pip_list
+  changed_when: false
+
+- debug:
+    var: pip_list.stdout_lines
+
+- name: Grant privileges on serpent_surge_db to app user
+  community.mysql.mysql_user:
+    name: "{{ app_db_user }}"
+    host: "%"
+    password: "{{ app_db_password }}"
+    priv: "{{ mysql_database }}.*:ALL"
+    state: present
+    append_privs: no
+    login_user: "{{ rds_master_user }}"
+    login_password: "{{ rds_master_password }}"
+    login_host: "{{ mysql_host }}"
+    login_port: "{{ mysql_port }}"
+
+- name: Create serpent_surge_db database on RDS
+  community.mysql.mysql_db:
+    name: "{{ mysql_database }}"
+    state: present
+    login_user: "{{ rds_master_user }}"
+    login_password: "{{ rds_master_password }}"
+    login_host: "{{ mysql_host }}"
+    login_port: "{{ mysql_port }}"
+
+- name: Create scores table on serpent_surge_db
+  community.mysql.mysql_query:
+    login_user: "{{ app_db_user }}"
+    login_password: "{{ app_db_password }}"
+    login_host: "{{ mysql_host }}"
+    login_port: "{{ mysql_port }}"
+    login_db: "{{ mysql_database }}"
+    query: |
+      CREATE TABLE IF NOT EXISTS {{ mysql_table }} (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        score INT NOT NULL,
+        difficulty INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );

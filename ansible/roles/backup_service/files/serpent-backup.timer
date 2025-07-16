@@ -1,0 +1,11 @@
+# roles/backup_service/files/serpent-backup.timer
+[Unit]
+Description=Run serpent-backup.service daily at 00:00
+
+[Timer]
+OnCalendar=*-*-* 13:40:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

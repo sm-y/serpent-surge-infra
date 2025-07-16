@@ -1,0 +1,32 @@
+# roles/cert_letsencrypt/tasks/main.yml
+---
+- name: Install certbot and dependencies
+  apt:
+    name:
+      - software-properties-common
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: yes
+
+- name: Check if certificate already exists
+  stat:
+    path: "/etc/letsencrypt/live/{{ letsencrypt_domain }}/fullchain.pem"
+  register: cert_exists
+
+- name: Obtain SSL certificate for domain
+  command: >
+    certbot certonly
+    --nginx
+    --agree-tos
+    --register-unsafely-without-email
+    --domain {{ letsencrypt_domain }}
+    --non-interactive
+  when: not cert_exists.stat.exists
+  notify: Reload nginx
+
+- name: Ensure certbot renewal timer is enabled
+  systemd:
+    name: certbot.timer
+    enabled: yes
+    state: started

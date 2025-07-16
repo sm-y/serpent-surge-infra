@@ -1,0 +1,17 @@
+# roles/backup_service/handlers/main.yml
+---
+- name: Reexec systemd
+  command: systemctl daemon-reexec
+
+- name: Reload systemd
+  command: systemctl daemon-reload
+
+- name: Restart backup service
+  systemd:
+    name: serpent-backup.service
+    state: restarted
+
+- name: Restart archive service
+  systemd:
+    name: serpent-backup-archive.service
+    state: restarted

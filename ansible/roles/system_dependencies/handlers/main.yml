@@ -1,0 +1,8 @@
+# ansible/roles/system_dependencies/handlers/main.yml
+---
+- name: Reboot system
+  reboot:
+    msg: "Rebooting due to system updates"
+    pre_reboot_delay: 5
+    reboot_timeout: 600
+  become: yes

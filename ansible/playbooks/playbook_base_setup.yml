@@ -1,0 +1,46 @@
+# playbooks/playbook_base_setup.yml
+---
+# Development Ubuntu (local)
+- name: Base system setup (test locally)
+  hosts: dev
+  connection: local
+  become: yes
+  vars_files:
+    - ../group_vars/dev.yml
+    - ../group_vars/all.yml
+
+# Production Ubuntu (remote)
+- name: Base system setup
+  hosts: prod
+  remote_user: ubuntu
+  become: yes
+
+  pre_tasks:
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        cache_valid_time: 3600
+      register: system_update
+
+    - name: Reboot if kernel was updated
+      reboot:
+        msg: "Rebooting due to kernel update"
+        pre_reboot_delay: 5
+      when: system_update.changed and 'linux-image' in system_update.stdout
+
+  roles:
+    - system_dependencies
+    - docker_install
+    - nginx_install
+
+  post_tasks:
+    - name: Verify installations
+      block:
+        # - name: Check Node.js version
+        #  command: node --version
+        #  register: node_version
+
+        - name: Check AWS CLI version
+          command: aws --version
+          register: aws_version

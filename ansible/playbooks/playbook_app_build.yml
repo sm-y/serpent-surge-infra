@@ -1,0 +1,16 @@
+---
+# ansible\playbooks\playbook_app_build.yml
+- hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: no
+  vars_files:
+    - "../group_vars/{{ build_env }}.yml"
+  roles:
+    - app_build
+# Images are always built locally on dev-ubuntu, just switch vars.
+# Build dev images (local MySQL host)
+# ansible-playbook playbooks/playbook_app_build.yml --extra-vars "build_env=dev" --tags build-dev
+
+# Build prod images (RDS, ECR push)
+# ansible-playbook playbooks/playbook_app_build.yml --extra-vars "build_env=prod" --tags build-prod

@@ -1,0 +1,80 @@
+# roles/cert_mkcert/tasks/main.yml
+---
+- name: Install dependency libnss3-tools
+  apt:
+    name: libnss3-tools
+    state: present
+    update_cache: yes
+  become: yes
+  tags: cert_mkcert
+
+- name: Check if mkcert exists
+  stat:
+    path: /usr/local/bin/mkcert
+  register: mkcert_stat
+  tags: cert_mkcert
+
+- name: Install mkcert
+  become: yes
+  shell: |
+    wget -q https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+    mv mkcert-v1.4.4-linux-amd64 /usr/local/bin/mkcert
+    chmod +x /usr/local/bin/mkcert
+  args:
+    creates: /usr/local/bin/mkcert
+  # when: not mkcert_stat.stat.exists
+  tags: cert_mkcert
+
+- name: Run mkcert install (create local CA)
+  shell: /usr/local/bin/mkcert -install
+  become: no
+  environment:
+    HOME: "/home/ubuntu"
+    CAROOT: "/home/ubuntu/.local/share/mkcert"
+  args:
+    creates: "/home/ubuntu/.local/share/mkcert"
+  tags: cert_mkcert
+
+- name: Generate mkcert certificates
+  shell: /usr/local/bin/mkcert -cert-file localhost.pem -key-file localhost-key.pem localhost 127.0.0.1 ::1
+  become: no
+  environment:
+    HOME: "/home/ubuntu"
+    CAROOT: "/home/ubuntu/.local/share/mkcert"
+  args:
+    chdir: /tmp
+    creates: "/tmp/localhost.pem"
+  register: mkcert_result
+  tags: cert_mkcert
+
+- debug:
+    var: mkcert_result.stdout_lines
+
+- name: Copy cert files to system locations
+  become: yes
+  copy:
+    src: "/tmp/{{ item }}"
+    dest: "/etc/ssl/{{ 'private' if item.endswith('-key.pem') else 'certs' }}/{{ item }}"
+    mode: "{{ '0600' if item.endswith('-key.pem') else '0644' }}"
+    remote_src: yes
+  loop:
+    - localhost.pem
+    - localhost-key.pem
+  tags: cert_mkcert
+
+- name: Check current user
+  become: yes
+  command: whoami
+
+- name: List /etc/ssl/private content
+  become: yes
+  command: ls -la /etc/ssl/private
+
+- name: Set ownership of private key for nginx user access
+  file:
+    path: /etc/ssl/private/localhost-key.pem
+    owner: root
+    group: www-data
+    mode: "0640"
+  become: yes
+  tags: cert_mkcert

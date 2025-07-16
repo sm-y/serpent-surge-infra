@@ -1,0 +1,7 @@
+# roles\app_run\tasks\main.yml
+---
+- import_tasks: up_dev.yml
+  when: "'dev' in group_names"
+
+- import_tasks: up_prod.yml
+  when: "'prod' in group_names"

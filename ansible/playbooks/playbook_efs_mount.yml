@@ -1,0 +1,6 @@
+# playbooks/playbook_efs_mount.yml
+---
+- hosts: prod
+  become: yes
+  roles:
+    - efs_mount

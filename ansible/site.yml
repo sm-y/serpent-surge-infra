@@ -1,1 +1,7 @@
-# parent playbook calling roles
+# \ansible\site.yml
+- name: Placeholder Play
+  hosts: localhost
+  tasks:
+    - name: Show placeholder message
+      ansible.builtin.debug:
+        msg: "placeholder"

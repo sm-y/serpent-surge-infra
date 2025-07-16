@@ -1,0 +1,10 @@
+# /etc/systemd/system/serpent-backup-archive.timer
+[Unit]
+Description=Run serpent-backup-archive.service every 3 days at 00:10
+
+[Timer]
+OnCalendar=*-*-01..31/3 00:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

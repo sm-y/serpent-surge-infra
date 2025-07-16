@@ -1,0 +1,78 @@
+# roles/setup_swap_disk/tasks/main.yml
+---
+# create and enable 2GB swap
+- name: Check if /swap file exists
+  stat:
+    path: /swap
+  register: swapfile
+
+- name: Create swap file
+  command: dd if=/dev/zero of=/swap bs=1M count=2048
+  when: not swapfile.stat.exists
+
+- name: Set correct permissions on swap file
+  file:
+    path: /swap
+    owner: root
+    group: root
+    mode: "0600"
+  when: swapfile.stat.exists
+
+- name: Make swap file
+  command: mkswap /swap
+  when: ansible_swaptotal_mb < 512
+
+- name: Enable swap file
+  command: swapon /swap
+  when: ansible_swaptotal_mb < 512
+
+- name: Add swap to fstab
+  mount:
+    name: none
+    src: /swap
+    fstype: swap
+    opts: sw
+    state: present
+
+# partition, format, mount /data used on dev-ubuntu (only)
+- name: Create GPT partition on /dev/nvme1n1 if not exists
+  command: parted /dev/nvme1n1 --script mklabel gpt mkpart primary ext4 0% 100%
+  args:
+    creates: /dev/nvme1n1p1
+
+- name: Check if /dev/nvme1n1p1 is formatted
+  command: blkid /dev/nvme1n1p1
+  register: blkid_out
+  ignore_errors: yes
+
+- name: Format volume if not formatted
+  filesystem:
+    fstype: ext4
+    dev: /dev/nvme1n1p1
+  when: "'TYPE=' not in blkid_out.stdout"
+
+- name: Create /data directory
+  file:
+    path: /data
+    state: directory
+
+- name: Ensure /data directory exists
+  file:
+    path: /data
+    state: directory
+
+- name: Mount /dev/nvme1n1p1 to /data
+  mount:
+    path: /data
+    src: /dev/nvme1n1p1
+    fstype: ext4
+    opts: defaults,noatime,nofail
+    state: mounted
+
+- name: Ensure mount persists in fstab
+  mount:
+    path: /data
+    src: /dev/nvme1n1p1
+    fstype: ext4
+    opts: defaults,noatime,nofail
+    state: present

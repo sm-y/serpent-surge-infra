@@ -1,0 +1,12 @@
+# playbooks/playbook_rds_mysql.yml
+---
+- name: Setup Amazon RDS MySQL
+  hosts: prod
+  become: yes
+  vars_files:
+    - ../group_vars/prod.yml
+    - ../group_vars/all.yml
+  collections:
+    - community.mysql
+  roles:
+    - rds_mysql_install

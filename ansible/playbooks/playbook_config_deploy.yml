@@ -1,0 +1,18 @@
+# playbooks/playbook_config_deploy.yml
+---
+# Production Ubuntu (AWS EC2)
+- hosts: prod
+  become: yes
+  tags: ["nginx-config"]
+  roles:
+    - cert_letsencrypt
+    - nginx_config
+
+# Development Ubuntu
+- hosts: dev
+  connection: local
+  become: yes
+  tags: ["nginx-config"]
+  roles:
+    - cert_mkcert
+    - nginx_config

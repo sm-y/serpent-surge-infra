@@ -1,2 +1,124 @@
 # copy backup scripts + systemd service
 # backup scripts deployment
+# roles/backup_service/tasks/main.yml
+---
+- name: Ensure serpentbak user exists
+  user:
+    name: serpentbak
+    system: yes
+    shell: /usr/sbin/nologin
+    state: present
+
+- name: Create backup directories
+  file:
+    path: "/data/serpent_backup/{{ item }}"
+    state: directory
+    owner: serpentbak
+    group: serpentbak
+    mode: "0750"
+  loop:
+    - dumps
+    - archives
+    - logs
+
+- name: Copy dbbackup.sh script
+  copy:
+    src: dbbackup.sh
+    dest: /data/serpent_backup/dbbackup.sh
+    mode: "0750"
+    owner: serpentbak
+    group: serpentbak
+
+- name: Copy archive.sh script
+  copy:
+    src: archive.sh
+    dest: /data/serpent_backup/archive.sh
+    mode: "0644"
+    owner: serpentbak
+    group: serpentbak
+
+- name: Copy list_archives.sh script
+  copy:
+    src: list_archives.sh
+    dest: /data/serpent_backup/list_archives.sh
+    mode: "0644"
+    owner: serpentbak
+    group: serpentbak
+
+# - name: Copy backup.env
+#   copy:
+#     src: backup.env
+#     dest: /data/serpent_backup/backup.env
+#     owner: serpentbak
+#     group: serpentbak
+#     mode: "0640"
+
+- name: Template backup.env with variables
+  template:
+    src: backup.env.j2
+    dest: /data/serpent_backup/backup.env
+    owner: serpentbak
+    group: serpentbak
+    mode: "0640"
+
+- name: Copy systemd service and timer files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {
+        src: "serpent-backup.service",
+        dest: "/etc/systemd/system/serpent-backup.service",
+      }
+    - {
+        src: "serpent-backup.timer",
+        dest: "/etc/systemd/system/serpent-backup.timer",
+      }
+    - {
+        src: "serpent-backup-archive.service",
+        dest: "/etc/systemd/system/serpent-backup-archive.service",
+      }
+    - {
+        src: "serpent-backup-archive.timer",
+        dest: "/etc/systemd/system/serpent-backup-archive.timer",
+      }
+
+- name: Set execute permission on backup scripts
+  file:
+    path: "/data/serpent_backup/{{ item }}"
+    mode: "0755"
+    owner: serpentbak
+    group: serpentbak
+  loop:
+    - dbbackup.sh
+    - archive.sh
+    - list_archives.sh
+
+  notify:
+    - Reexec systemd
+    - Reload systemd
+    - Restart backup service
+    - Restart archive service
+
+- name: Enable and start timers
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop:
+    - serpent-backup.timer
+    - serpent-backup-archive.timer
+
+- name: Ensure /var/log/serpentbackup exists
+  file:
+    path: /var/log/serpentbackup
+    state: directory
+    owner: serpentbak
+    group: serpentbak
+    mode: "0750"
+
+- name: Trigger service restart
+  meta: flush_handlers

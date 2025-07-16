@@ -1,5 +1,4 @@
-
-# nginx restart handler
+# ansible/roles/nginx_install/handlers/main.yml
 ---
 - name: Reload nginx
   systemd:

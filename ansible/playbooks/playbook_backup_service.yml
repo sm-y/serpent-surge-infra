@@ -1,0 +1,9 @@
+# playbooks/playbook_backup_service.yml
+# dev-ubuntu runs the backup scripts locally,
+# managing backups to S3 as configured.
+---
+- hosts: dev
+  become: yes
+  gather_facts: yes
+  roles:
+    - backup_service

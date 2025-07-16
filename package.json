@@ -1,0 +1,16 @@
+{
+  "name": "serpent-surge-infra",
+  "version": "1.0.0",
+  "description": "WIP - infrastructure setup with Ansible and Terraform.",
+  "main": "index.js",
+  "scripts": {
+    "format": "prettier --write '**/*.{js,json,yml,yaml,md,tf,conf,sh}' --ignore-path .prettierignore"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "prettier-plugin-nginx": "^1.0.3"
+  }
+}

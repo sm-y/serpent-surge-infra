@@ -1,0 +1,7 @@
+---
+# roles/nginx_config/tasks/main.yml
+- include_tasks: dev/main.yml
+  when: "'dev' in group_names"
+
+- include_tasks: prod/main.yml
+  when: "'prod' in group_names"

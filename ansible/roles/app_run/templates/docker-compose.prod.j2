@@ -1,0 +1,41 @@
+# roles\app_build\templates\docker-compose.prod.j2
+# ansible-playbook playbooks/playbook_app_deploy.yml --tags deploy-containers
+
+services:
+  backend:
+    image: {{ backend_ecr_uri }}:latest
+    container_name: serpent-repo-backend
+    environment:
+      - DB_HOST={{ mysql_host }}
+      - DB_PORT={{ mysql_port }}
+      - DB_USER={{ mysql_user }}
+      - DB_PASS={{ mysql_user_password }}
+      - DB_NAME={{ mysql_database }}
+    ports:
+      - "3000:3000"
+    networks:
+      - serpent_net
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/top-scores"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - /mnt/efs/uploads:/app/uploads
+      - ./logs/backend:/app/logs
+
+  frontend:
+    image: {{ frontend_ecr_uri }}:latest
+    container_name: serpent-repo-frontend
+    ports:
+      - "8080:80"
+    networks:
+      - serpent_net
+    depends_on:
+      - backend
+    restart: always
+
+networks:
+  serpent_net:
+    driver: bridge

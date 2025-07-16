@@ -1,0 +1,4 @@
+# roles/cert_letsencrypt/meta/main.yml
+---
+collections:
+  - community.general

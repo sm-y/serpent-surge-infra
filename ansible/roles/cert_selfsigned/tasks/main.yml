@@ -1,0 +1,24 @@
+# roles/cert_selfsigned/tasks/main.yml
+# ---
+# - name: Ensure openssl is installed
+#   apt:
+#     name: openssl
+#     state: present
+#     update_cache: yes
+#
+# - name: Create SSL private key and cert if missing
+#   command: >
+#     openssl req -x509 -nodes -days 365
+#     -newkey rsa:2048
+#     -keyout /etc/ssl/private/selfsigned.key
+#     -out /etc/ssl/certs/selfsigned.crt
+#     -subj "/CN=localhost"
+#   args:
+#     creates: /etc/ssl/certs/selfsigned.crt
+#
+# - name: Set group ownership for private key to www-data
+#   file:
+#     path: /etc/ssl/private/selfsigned.key
+#     owner: root
+#     group: www-data
+#     mode: "0640"

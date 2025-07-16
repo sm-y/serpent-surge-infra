@@ -1,2 +1,125 @@
-# installs mysql-client, nodejs, git, curl, wget
-# installs mysql, nodejs, npm, git, curl, wget
+# roles/system_dependencies/tasks/main.yml
+---
+# Clear any cached facts first
+- name: Find ansible facts cache files
+  find:
+    paths: /tmp
+    patterns:
+      - "ansible-facts-*"
+      - "gather_facts_*"
+  register: facts_cache_files
+  become: yes
+
+- name: Remove ansible facts cache files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ facts_cache_files.files }}"
+  ignore_errors: yes
+  become: yes
+
+# Gather fresh facts
+- name: Gather fresh system facts
+  setup:
+    gather_subset: all
+
+# Fix broken packages first
+- name: Fix broken packages
+  shell: apt --fix-broken install -y
+  become: yes
+  ignore_errors: no
+
+- name: Configure dpkg
+  shell: dpkg --configure -a
+  become: yes
+  ignore_errors: yes
+
+- name: Update apt cache with force
+  apt:
+    update_cache: yes
+    force_apt_get: yes
+    cache_valid_time: 0
+  retries: 3
+  delay: 10
+  register: update_result
+  until: update_result is succeeded
+  become: yes
+
+- name: Install basic system packages
+  apt:
+    name:
+      - lsb-release
+      - gnupg
+      - unzip
+      - curl
+      - wget
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+    state: present
+    # update_cache: yes
+    force_apt_get: yes
+  become: yes
+
+# AWS CLI installation
+- name: Check if AWS CLI is already installed
+  command: which aws
+  register: aws_cli_check
+  ignore_errors: yes
+  changed_when: false
+
+- name: Download and install AWS CLI
+  block:
+    - name: Download AWS CLI
+      get_url:
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+        dest: "/tmp/awscliv2.zip"
+        mode: "0644"
+        timeout: 30
+
+    - name: Extract AWS CLI
+      unarchive:
+        src: "/tmp/awscliv2.zip"
+        dest: "/tmp"
+        remote_src: yes
+
+    - name: Install AWS CLI
+      command: /tmp/aws/install --update
+      become: yes
+
+    - name: Clean up AWS CLI installation files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/awscliv2.zip"
+        - "/tmp/aws"
+  when: aws_cli_check.rc != 0
+  become: yes
+
+- name: Install MySQL Python driver for Ansible
+  apt:
+    name: python3-pymysql
+    state: present
+    force_apt_get: yes
+  become: yes
+
+# Install collections for all environments, not just dev
+- name: Install Ansible collections
+  ansible.builtin.command:
+    cmd: "ansible-galaxy collection install -r {{ playbook_dir }}/../requirements.yml --force"
+  delegate_to: localhost
+  run_once: true
+
+- name: Check if required Ansible collections are installed
+  command: ansible-galaxy collection list
+  register: installed_collections
+  changed_when: false
+  delegate_to: localhost
+  run_once: true
+
+- name: Display installed collections
+  debug:
+    var: installed_collections.stdout_lines
+  delegate_to: localhost
+  run_once: true

@@ -1,0 +1,7 @@
+# playbooks/playbook_noroot.yml
+---
+- hosts: prod
+  become: yes
+  gather_facts: yes
+  roles:
+    - norootlogin

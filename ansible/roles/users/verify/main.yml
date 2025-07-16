@@ -1,0 +1,13 @@
+# roles/users/verify/main.yml
+# ---
+# - name: Read sshd_config from remote host
+#   slurp:
+#     src: /etc/ssh/sshd_config
+#   register: sshd_conf
+# 
+# - name: Assert root SSH login is disabled on remote
+#   assert:
+#     that:
+#       - "'PermitRootLogin no' in sshd_conf['content'] | b64decode"
+#     fail_msg: "Root SSH login is not disabled!"
+#     success_msg: "Root SSH login is disabled as expected."

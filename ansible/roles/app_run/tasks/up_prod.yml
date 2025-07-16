@@ -1,0 +1,106 @@
+# roles\app_run\tasks\up_prod.yml
+---
+- name: Ensure /data/prod directory exists
+  file:
+    path: /data/prod
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+
+- name: Deploy docker-compose for prod
+  template:
+    src: docker-compose.prod.j2
+    dest: /data/prod/docker-compose.yml
+    mode: "0644"
+
+- name: Check if docker-compose binary exists
+  stat:
+    path: /usr/local/bin/docker-compose
+  register: docker_compose_bin
+
+- name: Download docker-compose binary if missing
+  get_url:
+    url: https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
+    dest: /usr/local/bin/docker-compose
+    mode: "0755"
+  become: yes
+  when: not docker_compose_bin.stat.exists
+
+- name: Create docker-compose symlink for 'docker compose' command
+  file:
+    src: /usr/local/bin/docker-compose
+    dest: /usr/local/bin/docker-compose-v2
+    state: link
+  become: yes
+  when: docker_compose_bin.stat.exists or (docker_compose_bin is defined and not docker_compose_bin.stat.exists == false)
+
+- name: Ensure ubuntu is in docker group
+  user:
+    name: ubuntu
+    groups: docker
+    append: yes
+  become: yes
+
+- name: Reset ssh connection to allow user changes to affect ansible user
+  meta: reset_connection
+
+- name: Stop existing containers (prod)
+  shell: docker-compose -p prod -f /data/prod/docker-compose.yml down
+  ignore_errors: yes
+
+- name: Login to AWS ECR
+  shell: |
+    aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 510612307309.dkr.ecr.eu-north-1.amazonaws.com
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  become: yes
+  # delegate_to: "{{ prod_instance_ip }}"
+
+- name: Run containers with docker-compose (prod)
+  shell: docker-compose -p prod -f /data/prod/docker-compose.yml up -d
+
+# Production
+- name: Pull frontend image from ECR
+  community.docker.docker_image:
+    name: "{{ frontend_ecr_uri }}"
+    tag: latest
+    source: pull
+    state: present
+
+- name: Pull backend image from ECR
+  community.docker.docker_image:
+    name: "{{ backend_ecr_uri }}"
+    tag: latest
+    source: pull
+    state: present
+
+- name: Show frontend image ID
+  community.docker.docker_image_info:
+    name: "{{ frontend_ecr_uri }}:latest"
+  register: frontend_image_info
+
+- name: Show backend image ID
+  community.docker.docker_image_info:
+    name: "{{ backend_ecr_uri }}:latest"
+  register: backend_image_info
+
+- debug:
+    msg: "Backend image ID: {{ backend_image_info.images[0].Id }}"
+  when: "'prod' in group_names and not ansible_check_mode and backend_image_info.images | length > 0"
+
+- debug:
+    msg: "Backend image ID: {{ frontend_image_info.images[0].Id }}"
+  when: "'prod' in group_names and not ansible_check_mode and frontend_image_info.images | length > 0"
+
+# keep these commands as a fallback, but already add restart in docker-compose.dev.j2 services
+
+- name: Ensure backend restarts unless stopped
+  command: docker update --restart unless-stopped serpent-repo-backend
+  become: yes
+
+- name: Ensure frontend restarts unless stopped
+  command: docker update --restart unless-stopped serpent-repo-frontend
+  become: yes

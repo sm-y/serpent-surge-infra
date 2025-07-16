@@ -1,0 +1,7 @@
+# roles\app_build\tasks\deploy_env.yml
+---
+- name: Create .env file for backend app with DB config
+  template:
+    src: app.env.j2
+    dest: /data/serpent-surge-infra/docker/backend/.env
+  become: yes

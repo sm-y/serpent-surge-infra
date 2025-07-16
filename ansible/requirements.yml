@@ -1,0 +1,6 @@
+# ansible/requirements.yml
+collections:
+  - name: community.general
+  - name: community.mysql
+  - name: community.docker
+    version: ">=3.4.0"

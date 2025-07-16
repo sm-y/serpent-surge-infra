@@ -1,0 +1,63 @@
+# roles\app_run\tasks\up_dev.yml
+---
+- name: Ensure /data/dev directory exists
+  file:
+    path: /data/dev
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+
+- name: Deploy docker-compose for dev
+  template:
+    src: docker-compose.dev.j2
+    dest: /data/dev/docker-compose.yml
+    mode: "0644"
+
+- name: Check if docker-compose binary exists
+  stat:
+    path: /usr/local/bin/docker-compose
+  register: docker_compose_bin
+
+- name: Download docker-compose binary if missing
+  get_url:
+    url: https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
+    dest: /usr/local/bin/docker-compose
+    mode: "0755"
+  become: yes
+  when: not docker_compose_bin.stat.exists
+
+- name: Create docker-compose symlink for 'docker compose' command
+  file:
+    src: /usr/local/bin/docker-compose
+    dest: /usr/local/bin/docker-compose-v2
+    state: link
+  become: yes
+  when: docker_compose_bin.stat.exists or (docker_compose_bin is defined and not docker_compose_bin.stat.exists == false)
+
+- name: Ensure ubuntu is in docker group
+  user:
+    name: ubuntu
+    groups: docker
+    append: yes
+  become: yes
+
+- name: Reset ssh connection to allow user changes to affect ansible user
+  meta: reset_connection
+
+- name: Stop existing containers (dev)
+  shell: docker-compose -p dev -f /data/dev/docker-compose.yml down
+  ignore_errors: yes
+
+- name: Run containers with docker-compose (dev)
+  shell: docker-compose -p dev -f /data/dev/docker-compose.yml up -d
+
+# keep these commands as a fallback, but already add restart in docker-compose.dev.j2 services
+
+- name: Ensure backend restarts unless stopped
+  command: docker update --restart unless-stopped serpent-backend-dev
+  become: yes
+
+- name: Ensure frontend restarts unless stopped
+  command: docker update --restart unless-stopped serpent-frontend-dev
+  become: yes

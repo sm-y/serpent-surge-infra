@@ -1,0 +1,30 @@
+# ansible/group_vars/prod.yml
+---
+mysql_host: "{{ lookup('env', 'MYSQL_HOST') }}"
+mysql_port: "{{ lookup('env', 'MYSQL_PORT') | int }}"
+rds_master_user: "{{ lookup('env', 'RDS_MASTER_USER') }}"
+rds_master_password: "{{ lookup('env', 'RDS_MASTER_PASSWORD') }}"
+mysql_user: "{{ lookup('env', 'RDS_MASTER_USER') }}"
+mysql_user_password: "{{ lookup('env', 'RDS_MASTER_PASSWORD') }}"
+
+app_db_user: "{{ lookup('env', 'APP_DB_USER') }}"
+app_db_password: "{{ lookup('env', 'APP_DB_PASSWORD') }}"
+
+mysql_database: "{{ lookup('env', 'MYSQL_DATABASE') }}"
+mysql_table: "{{ lookup('env', 'MYSQL_TABLE') }}"
+
+ansible_host_ip: "{{ lookup('env', 'ANSIBLE_HOST_IP') }}"
+app_env: "{{ lookup('env', 'APP_ENV') }}"
+nginx_as_host_proxy: true
+nginx_server_name: "{{ lookup('env', 'NGINX_SERVER_NAME') }}"
+letsencrypt_domain: "{{ lookup('env', 'LETSENCRYPT_DOMAIN') }}"
+
+node_env: "{{ lookup('env', 'NODE_ENV') }}"
+frontend_port: "{{ lookup('env', 'FRONTEND_PORT') | int }}"
+backend_port: "{{ lookup('env', 'BACKEND_PORT') | int }}"
+
+frontend_ecr_uri: "{{ lookup('env', 'FRONTEND_ECR_URI') }}"
+backend_ecr_uri: "{{ lookup('env', 'BACKEND_ECR_URI') }}"
+
+aws_access_key_id: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+aws_secret_access_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
