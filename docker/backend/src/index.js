@@ -12,7 +12,7 @@ require("dotenv").config();
 app.use(express.json());
 
 // Database credentials - make sure you don't store sensitive information here in plain text!
-// const db = mysql.createConnection({
+
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
