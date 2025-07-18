@@ -12,7 +12,8 @@ require("dotenv").config();
 app.use(express.json());
 
 // Database credentials - make sure you don't store sensitive information here in plain text!
-const db = mysql.createConnection({
+// const db = mysql.createConnection({
+const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
@@ -21,13 +22,13 @@ const db = mysql.createConnection({
   // ssl: false,
 });
 
-db.connect((err) => {
-  if (err) {
-    console.error("Error connecting to MySQL:", err.message);
-    return;
-  }
-  console.log("Connected to MySQL");
-});
+// db.connect((err) => {
+//   if (err) {
+//     console.error("Error connecting to MySQL:", err.message);
+//     return;
+//   }
+//   console.log("Connected to MySQL");
+// });
 
 // Endpoint for saving scores with a POST request
 app.post("/save-score", (req, res) => {
