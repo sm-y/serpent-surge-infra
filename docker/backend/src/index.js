@@ -22,14 +22,6 @@ const db = mysql.createPool({
   // ssl: false,
 });
 
-// db.connect((err) => {
-//   if (err) {
-//     console.error("Error connecting to MySQL:", err.message);
-//     return;
-//   }
-//   console.log("Connected to MySQL");
-// });
-
 // Endpoint for saving scores with a POST request
 app.post("/save-score", (req, res) => {
   const { name, difficulty, score } = req.body;
