@@ -36,16 +36,25 @@ Flow: root setup.sh → imports Terraform state → runs Terraform → then Ansi
 
 You can also run individual playbooks from `ansible/playbooks/` if needed.
 
+Deployment Notes:
+
+- `up_prod.yml` pulls Docker images by digest → ensures immutability and freshness. ✅ Safe for production image traceability and cache-bypass
+
 ---
 
 ## Key Updates
 
-- Docker images are tagged and pulled by digest, ensuring immutable deployment and avoiding "latest" tag issues.
+- Docker images are tagged and pulled by digest, ensuring immutable deployment and avoiding "latest" tag issue
 - Added Ansible cleanup role to remove unused Docker images, containers, and prune system.
 - Use of `community.docker` modules for image management and pruning.
 - Deployment uses `docker-compose` on prod node for container orchestration, but images managed explicitly by Ansible modules.
 - ECR lifecycle policies configured to auto-clean untagged images.
-- Next to do: AWS credentials and secrets managed securely via Ansible vault or environment variables.
+
+---
+
+## Next to do
+
+- AWS credentials and secrets managed securely via Ansible vault or environment variables.
 
 ---
 
