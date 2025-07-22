@@ -33,7 +33,6 @@
     dest: /usr/local/bin/docker-compose-v2
     state: link
   become: yes
-  when: docker_compose_bin.stat.exists or (docker_compose_bin is defined and not docker_compose_bin.stat.exists == false)
 
 - name: Ensure ubuntu is in docker group
   user:
@@ -49,8 +48,16 @@
   shell: docker-compose -p dev -f /data/dev/docker-compose.yml down
   ignore_errors: yes
 
+- name: Remove old local dev images
+  shell: docker image rm -f {{ item }} || true
+  loop:
+    - serpent-frontend-dev
+    - serpent-backend-dev
+  ignore_errors: yes
+
 - name: Run containers with docker-compose (dev)
   shell: docker-compose -p dev -f /data/dev/docker-compose.yml up -d
+  become: yes
 
 # keep these commands as a fallback, but already add restart in docker-compose.dev.j2 services
 

@@ -83,8 +83,8 @@ resource "aws_db_instance" "serpent_db" {
   engine_version       = "8.0"
   instance_class       = "db.t3.micro"
   identifier           = "serpent-surge-db"
-  username             = var.db_username
-  password             = var.db_password
+  username             = "serpent_user"
+  password             = "SecureUserPassword123!"
   parameter_group_name = "default.mysql8.0"
   skip_final_snapshot  = true
   publicly_accessible  = false
@@ -117,6 +117,7 @@ terraform {
 # }
 
 # ECR repos
+
 resource "aws_ecr_repository" "ecr_backend_1" {
   name = "serpent-repo-backend"
 }
@@ -125,9 +126,44 @@ resource "aws_ecr_repository" "ecr_frontend_1" {
   name = "serpent-repo-frontend"
 }
 
-resource "aws_ecr_repository" "ecr_nginx" {
-  name = "serpent-repo-nginx"
+# resource "aws_ecr_repository" "ecr_nginx" {
+#   name = "serpent-repo-nginx"
+# }
+
+# Lifecycle policies
+
+resource "aws_ecr_lifecycle_policy" "ecr_backend_policy" {
+  repository = aws_ecr_repository.ecr_backend_1.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Remove untagged images"
+        selection = {
+          tagStatus     = "untagged"
+          countType     = "imageCountMoreThan"
+          countNumber   = 1
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
 }
+
+resource "aws_ecr_lifecycle_policy" "ecr_frontend_policy" {
+  repository = aws_ecr_repository.ecr_frontend_1.name
+
+  policy = aws_ecr_lifecycle_policy.ecr_backend_policy.policy
+}
+
+# resource "aws_ecr_lifecycle_policy" "ecr_nginx_policy" {
+#   repository = aws_ecr_repository.ecr_nginx.name
+# 
+#   policy = aws_ecr_lifecycle_policy.ecr_backend_policy.policy
+# }
 
 # EFS
 resource "aws_efs_file_system" "efs" {

@@ -1,12 +1,32 @@
-# roles\app_run\tasks\up_prod.yml
 ---
-- name: Ensure /data/prod directory exists
-  file:
-    path: /data/prod
-    state: directory
-    owner: ubuntu
-    group: ubuntu
-    mode: "0755"
+# roles/app_run/tasks/up_prod.yml
+# This task is specific to the current build
+- name: Load build_time from file
+  set_fact:
+    build_time: "{{ lookup('file', '/tmp/build_time.txt') }}"
+
+- name: Remove existing frontend image with same tag
+  shell: docker rmi -f {{ frontend_ecr_uri }}:{{ build_time }}
+  ignore_errors: yes
+
+- name: Remove existing backend image with same tag
+  shell: docker rmi -f {{ backend_ecr_uri }}:{{ build_time }}
+  ignore_errors: yes
+
+- name: Copy image digests file to remote
+  copy:
+    src: /tmp/image_digests.yml
+    dest: /tmp/image_digests.yml
+
+- name: Load image digests
+  include_vars:
+    file: /tmp/image_digests.yml
+
+- name: Include app_build deploy_env to create .env
+  block:
+    - include_role:
+        name: app_build
+        tasks_from: deploy_env
 
 - name: Deploy docker-compose for prod
   template:
@@ -33,7 +53,6 @@
     dest: /usr/local/bin/docker-compose-v2
     state: link
   become: yes
-  when: docker_compose_bin.stat.exists or (docker_compose_bin is defined and not docker_compose_bin.stat.exists == false)
 
 - name: Ensure ubuntu is in docker group
   user:
@@ -47,7 +66,12 @@
 
 - name: Stop existing containers (prod)
   shell: docker-compose -p prod -f /data/prod/docker-compose.yml down
+  become: yes
   ignore_errors: yes
+
+- name: Pause to ensure containers stopped
+  pause:
+    seconds: 5
 
 - name: Login to AWS ECR
   shell: |
@@ -56,26 +80,32 @@
     AWS_DEFAULT_REGION: eu-north-1
     AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
     AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
-  become: yes
   # delegate_to: "{{ prod_instance_ip }}"
+
+- name: Check current user in remove images task
+  shell: whoami
+  become: yes
+
+# Production
+- name: Pull frontend image from ECR by digest
+  community.docker.docker_image:
+    name: "{{ frontend_ecr_uri }}@{{ frontend_image_digest }}"
+    source: pull
+    state: present
+
+- name: Pull backend image from ECR by digest
+  community.docker.docker_image:
+    name: "{{ backend_ecr_uri }}@{{ backend_image_digest }}"
+    source: pull
+    state: present
+
+- name: Force pull images with docker-compose
+  shell: docker-compose -p prod -f /data/prod/docker-compose.yml pull
+  become: yes
 
 - name: Run containers with docker-compose (prod)
   shell: docker-compose -p prod -f /data/prod/docker-compose.yml up -d
-
-# Production
-- name: Pull frontend image from ECR
-  community.docker.docker_image:
-    name: "{{ frontend_ecr_uri }}"
-    tag: latest
-    source: pull
-    state: present
-
-- name: Pull backend image from ECR
-  community.docker.docker_image:
-    name: "{{ backend_ecr_uri }}"
-    tag: latest
-    source: pull
-    state: present
+  become: yes
 
 - name: Show frontend image ID
   community.docker.docker_image_info:
@@ -92,7 +122,7 @@
   when: "'prod' in group_names and not ansible_check_mode and backend_image_info.images | length > 0"
 
 - debug:
-    msg: "Backend image ID: {{ frontend_image_info.images[0].Id }}"
+    msg: "Frontend image ID: {{ frontend_image_info.images[0].Id }}"
   when: "'prod' in group_names and not ansible_check_mode and frontend_image_info.images | length > 0"
 
 # keep these commands as a fallback, but already add restart in docker-compose.dev.j2 services

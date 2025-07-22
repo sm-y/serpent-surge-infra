@@ -57,7 +57,6 @@
       - apt-transport-https
       - ca-certificates
     state: present
-    # update_cache: yes
     force_apt_get: yes
   become: yes
 
@@ -123,3 +122,16 @@
     var: installed_collections.stdout_lines
   delegate_to: localhost
   run_once: true
+
+- name: Set TCP keepalive time to 300s
+  sysctl:
+    name: net.ipv4.tcp_keepalive_time
+    value: "300"
+    state: present
+    reload: yes
+
+- name: Ensure keepalive time persists after reboot
+  lineinfile:
+    path: /etc/sysctl.conf
+    regexp: '^net\.ipv4\.tcp_keepalive_time'
+    line: "net.ipv4.tcp_keepalive_time = 300"

@@ -4,6 +4,10 @@
 # Attach role to prod-ubuntu instance
 
 # For existing prod-ubuntu instance to import into Terraform state 
+# under the resource name aws_instance.prod_ubuntu.
+# terraform import aws_instance.prod_ubuntu i-0cffd1a1c8d417f1a
+# terraform plan
+# will not try to recreate the instance but manage it.
 
 data "aws_iam_policy_document" "ec2_assume" {
   statement {
@@ -13,6 +17,11 @@ data "aws_iam_policy_document" "ec2_assume" {
       identifiers = ["ec2.amazonaws.com"]
     }
   }
+}
+
+resource "aws_iam_role" "ssm_role" {
+  name               = "prod-ubuntu-ssm-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
 }
 
 resource "aws_iam_role_policy" "ecr_policy" {
@@ -32,17 +41,14 @@ resource "aws_iam_role_policy" "ecr_policy" {
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
-          "ecr:BatchGetImage"
+          "ecr:BatchGetImage",
+          "ecr:DescribeImages",
+          "ecr:ListImages"            # optional but useful
         ]
         Resource = "*"
       }
     ]
   })
-}
-
-resource "aws_iam_role" "ssm_role" {
-  name               = "prod-ubuntu-ssm-role"
-  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_attach" {
@@ -83,3 +89,9 @@ resource "aws_instance" "prod_ubuntu" {
     Name = "prod-ubuntu"
   }
 }
+
+# resource "aws_instance" "dev_ubuntu" {
+#   ami                    = var.ami_id
+#   instance_type          = "t3.micro"
+  # (resource arguments)
+# }

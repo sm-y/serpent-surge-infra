@@ -1,11 +1,71 @@
 # roles/docker_install/tasks/main.yml
 ---
+- name: Remove all Docker containers
+  shell: docker rm -f $(docker ps -aq) || true
+  become: yes
+  ignore_errors: yes
+  tags: docker_install
+
+- name: Remove all Docker images
+  shell: docker rmi -f $(docker images -q) || true
+  become: yes
+  ignore_errors: yes
+  tags: docker_install
+
+- name: Stop Docker if running
+  ansible.builtin.systemd:
+    name: docker
+    state: stopped
+    enabled: yes
+  become: yes
+  ignore_errors: yes
+  tags: docker_install
+
+- name: Create Docker data directory on /data
+  ansible.builtin.file:
+    path: /data/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: yes
+  tags: docker_install
+
+- name: Stat /var/lib/docker
+  ansible.builtin.stat:
+    path: /var/lib/docker
+  register: docker_varlib_stat
+  tags: docker_install
+
+- name: Move existing Docker data if any (only if /var/lib/docker exists and not empty)
+  command: rsync -aP /var/lib/docker/ /data/docker/
+  become: yes
+  when: docker_varlib_stat.stat.exists and docker_varlib_stat.stat.size > 0
+  ignore_errors: yes
+  tags: docker_install
+
+- name: Remove /var/lib/docker directory
+  ansible.builtin.file:
+    path: /var/lib/docker
+    state: absent
+  become: yes
+  tags: docker_install
+
+- name: Create symlink from /var/lib/docker to /data/docker
+  ansible.builtin.file:
+    src: /data/docker
+    dest: /var/lib/docker
+    state: link
+  become: yes
+  tags: docker_install
+
 - name: Ensure /etc/apt/keyrings exists
   file:
     path: /etc/apt/keyrings
     state: directory
     mode: "0755"
   become: yes
+  tags: docker_install
 
 - name: Download Docker GPG key and dearmor it
   shell: |
@@ -13,12 +73,14 @@
   args:
     creates: /etc/apt/keyrings/docker.gpg
   become: yes
+  tags: docker_install
 
 - name: Set permissions on Docker GPG key
   file:
     path: /etc/apt/keyrings/docker.gpg
     mode: "0644"
   become: yes
+  tags: docker_install
 
 - name: Add Docker apt repository (force jammy on noble)
   ansible.builtin.copy:
@@ -27,11 +89,13 @@
     dest: /etc/apt/sources.list.d/docker.list
     mode: "0644"
   become: yes
+  tags: docker_install
 
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
   become: yes
+  tags: docker_install
 
 - name: Install Docker packages
   ansible.builtin.apt:
@@ -43,6 +107,7 @@
       - docker-compose-plugin
     state: present
   become: yes
+  tags: docker_install
 
 - name: Enable and start Docker
   ansible.builtin.systemd:
@@ -50,6 +115,7 @@
     enabled: yes
     state: started
   become: yes
+  tags: docker_install
 
 - name: Add ubuntu user to docker group
   ansible.builtin.user:
@@ -57,12 +123,26 @@
     groups: docker
     append: yes
   become: yes
+  tags: docker_install
 
 - name: Check Docker Compose version
   ansible.builtin.shell: docker compose version
   register: compose_version
   become: yes
+  tags: docker_install
 
 - name: Show Docker Compose version
   ansible.builtin.debug:
     msg: "{{ compose_version.stdout }}"
+  tags: docker_install
+
+- name: Ensure backend logs directory exists (dev only)
+  file:
+    path: /data/serpent-surge-infra/docker/logs/backend
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+  become: yes
+  when: build_env == "dev"
+  tags: docker_install

@@ -1,4 +1,4 @@
-# roles\app_build\tasks\main.yml
+# roles/app_build/tasks/main.yml
 ---
 - name: Start MySQL service asynchronously
   service:
@@ -25,6 +25,22 @@
     timeout: 300
   when: "'dev' in group_names"
 
+- name: Set current build timestamp
+  set_fact:
+    build_time: "{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+  when: build_env in ['prod', 'dev']
+
+- name: Save build_time to file
+  copy:
+    content: "{{ build_time }}"
+    dest: /tmp/build_time.txt
+  when: build_env in ['prod', 'dev']
+
 - import_tasks: deploy_env.yml
-- import_tasks: build.yml
+- import_tasks: cleanup.yml # cleanup before build
+- include_tasks: build.yml
+  vars:
+    build_time: "{{ build_time }}"
+- import_tasks: cleanup.yml # again (clears old)
+
 # - import_tasks: up.yml

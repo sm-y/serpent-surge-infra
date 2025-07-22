@@ -1,7 +1,28 @@
 # roles\app_build\tasks\deploy_env.yml
 ---
-- name: Create .env file for backend app with DB config
+- name: Create .env file for dev backend app with DB config
   template:
     src: app.env.j2
     dest: /data/serpent-surge-infra/docker/backend/.env
+    mode: "0644"
   become: yes
+  when: build_env == "dev"
+
+# For production
+- name: Ensure /data/prod directory exists
+  file:
+    path: /data/prod
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+  become: yes
+  when: build_env == "prod"
+
+- name: Create .env file in /data/prod for prod backend app with DB config
+  template:
+    src: app.env.j2
+    dest: /data/prod/.env
+    mode: "0644"
+  become: yes
+  when: build_env == "prod"

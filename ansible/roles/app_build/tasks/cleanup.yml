@@ -1,0 +1,202 @@
+---
+# roles/app_build/tasks/cleanup.yml
+- name: Debug whoami and ls /tmp/build_time.txt
+  shell: |
+    whoami
+    ls -l /tmp/build_time.txt
+  register: debug_output
+  become: yes
+
+- debug:
+    var: debug_output.stdout_lines
+
+- name: Read build_time from file
+  slurp:
+    src: /tmp/build_time.txt
+  register: build_time_file
+
+- name: Set build_time from file
+  set_fact:
+    build_time: "{{ build_time_file.content | b64decode | trim }}"
+
+# Gather running containers
+- name: Get running container IDs
+  shell: docker ps -q
+  register: running_container_ids
+  become: yes
+
+- name: Get info for running containers
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop: "{{ running_container_ids.stdout_lines }}"
+  register: running_containers
+  become: yes
+
+- name: Stop running containers
+  community.docker.docker_container:
+    name: "{{ item.Name }}"
+    state: stopped
+  loop: "{{ running_containers.results | map(attribute='container') | list }}"
+  # ignore_errors: yes
+  become: yes
+
+- name: Get all container IDs
+  shell: docker ps -a -q
+  register: all_container_ids
+  become: yes
+
+- name: Remove all containers
+  community.docker.docker_container:
+    name: "{{ item }}"
+    state: absent
+    force_kill: yes
+  loop: "{{ all_container_ids.stdout_lines }}"
+  # ignore_errors: yes
+  become: yes
+
+# After stopping/removing containers
+
+- name: List all containers after removal to verify none remain
+  shell: docker ps -a
+  register: post_container_list
+  become: yes
+
+- debug:
+    var: post_container_list.stdout_lines
+
+- name: Remove all images with <none> tag explicitly
+  shell: |
+    docker images | grep '<none>' | awk '{print $3}' | xargs -r docker rmi -f
+  # ignore_errors: yes
+  become: yes
+
+- name: Get images used by containers
+  shell: docker ps -a --format '{{"{{.Image}}"}}' | sort | uniq
+  register: used_images
+  become: yes
+
+- name: Get all images to consider removal
+  shell: docker images --format '{{"{{.Repository}}:{{.Tag}}"}}'
+  register: all_images
+  become: yes
+
+- name: Set images to remove (not used by containers and not latest or current build_time)
+  set_fact:
+    removable_images: >-
+      {{
+        all_images.stdout_lines
+        | difference(used_images.stdout_lines)
+        | select('match', '^(?!.*(latest|{{ build_time }})).*$')
+        | list
+      }}
+
+- name: Debug removable images
+  debug:
+    var: removable_images
+
+- name: Remove unused images not tagged latest or build_time
+  shell: docker rmi -f {{ item }}
+  loop: "{{ removable_images }}"
+  become: yes
+  when: removable_images | length > 0
+
+- name: Remove dangling images (<none>)
+  shell: docker images --filter "dangling=true" -q | xargs -r docker rmi -f
+  # ignore_errors: yes
+  become: yes
+
+- name: List images with <none> tag
+  shell: docker images | grep '<none>'
+  register: none_images
+  become: yes
+  failed_when: false
+
+- debug:
+    var: none_images.stdout_lines
+
+# Confirm build_time fact value matches expected timestamp format
+
+- name: Debug build_time fact value
+  debug:
+    msg: "build_time is '{{ build_time }}'"
+  when: build_time is defined
+
+- name: Docker system prune all volumes and caches
+  shell: docker system prune --all --force --volumes
+  # ignore_errors: yes
+  become: yes
+
+- name: Prune all unused Docker objects via module
+  community.docker.docker_prune:
+    containers: yes
+    images: yes
+    networks: yes
+    volumes: yes
+    builder_cache: yes
+  become: yes
+
+- debug:
+    var: build_time
+  # when: build_env == "prod"
+
+- name: Remove local "latest" tags for backend and frontend
+  shell: docker image rm -f {{ item }}:latest || true
+  loop:
+    - "{{ backend_ecr_uri }}"
+    - "{{ frontend_ecr_uri }}"
+  become: yes
+  when: build_env == "prod"
+
+- name: Remove images by digest locally
+  shell: docker image rm -f "{{ item }}" || true
+  loop:
+    - "{{ backend_ecr_uri }}@{{ backend_image_digest }}"
+    - "{{ frontend_ecr_uri }}@{{ frontend_image_digest }}"
+  become: yes
+  when: build_env == "prod"
+
+- name: List old backend images in ECR (exclude latest)
+  shell: aws ecr list-images --repository-name serpent-repo-backend --region eu-north-1 --query 'imageIds[?imageTag!=`latest`]' --output json
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  register: old_backend_images
+  when: build_env == "prod"
+
+- name: Delete old backend images from ECR
+  shell: >
+    aws ecr batch-delete-image
+    --repository-name serpent-repo-backend
+    --region eu-north-1
+    --image-ids '{{ old_backend_images.stdout | default("[]") }}'
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  when:
+    - build_env == "prod"
+    - old_backend_images.stdout | length > 2
+
+- name: List old frontend images in ECR (exclude latest)
+  shell: aws ecr list-images --repository-name serpent-repo-frontend --region eu-north-1 --query 'imageIds[?imageTag!=`latest`]' --output json
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  register: old_frontend_images
+  when: build_env == "prod"
+
+- name: Delete old frontend images from ECR
+  shell: >
+    aws ecr batch-delete-image
+    --repository-name serpent-repo-frontend
+    --region eu-north-1
+    --image-ids '{{ old_frontend_images.stdout | default("[]") }}'
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  when:
+    - build_env == "prod"
+    - old_frontend_images.stdout | length > 2

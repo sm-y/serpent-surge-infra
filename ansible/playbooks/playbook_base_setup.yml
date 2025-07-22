@@ -5,12 +5,24 @@
   hosts: dev
   connection: local
   become: yes
+  vars:
+    build_env: dev
   vars_files:
     - ../group_vars/dev.yml
     - ../group_vars/all.yml
+  roles:
+    - system_dependencies
+    - docker_install
+    - nginx_install
+  post_tasks:
+    - name: Verify installations
+      block:
+        - name: Check AWS CLI version
+          command: aws --version
+          register: aws_version
 
 # Production Ubuntu (remote)
-- name: Base system setup
+- name: Base system setup and update prod
   hosts: prod
   remote_user: ubuntu
   become: yes
@@ -29,6 +41,31 @@
         pre_reboot_delay: 5
       when: system_update.changed and 'linux-image' in system_update.stdout
 
+    - name: Install Python3 + pip
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Install Ansible package
+      apt:
+        name: ansible
+        state: latest
+        update_cache: yes
+
+    - name: Check requirements.yml presence on remote dev
+      stat:
+        path: "{{ playbook_dir }}/../requirements.yml"
+      register: req_file
+      run_once: true
+
+    - name: Show requirements.yml status
+      debug:
+        msg: "requirements.yml exists: {{ req_file.stat.exists }}"
+      run_once: true
+
   roles:
     - system_dependencies
     - docker_install
@@ -37,10 +74,6 @@
   post_tasks:
     - name: Verify installations
       block:
-        # - name: Check Node.js version
-        #  command: node --version
-        #  register: node_version
-
         - name: Check AWS CLI version
           command: aws --version
           register: aws_version

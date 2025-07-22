@@ -1,28 +1,135 @@
-# roles\app_build\tasks\build.yml
-# npm install → npm build → docker build
-# Build images in a dedicated build environment (dev Ubuntu)
 ---
-- name: Stop all running containers
-  shell: docker stop $(docker ps -q)
-  ignore_errors: yes
-  become: yes
-  tags: cleanup
+# roles/app_build/tasks/build.yml
 
-- name: Remove all containers
-  shell: docker rm $(docker ps -aq)
-  ignore_errors: yes
-  become: yes
-  tags: cleanup
+# Build images in a dedicated build environment (dev Ubuntu)
 
-- name: Prune all unused Docker objects (images, containers, caches)
-  community.docker.docker_prune:
-    containers: yes
-    images: yes
-    networks: yes
-    volumes: yes
-    builder_cache: yes
+# To ensure fresh image is used
+# Automated ECR image cleanup enabled.
+# Lifecycle policies configured in AWS ECR repository via Terraform
+# ensure old images are expired automatically to save storage and costs.
+# Ansible tasks here perform manual cleanup as an additional safeguard.
+
+# Prod: backend + RDS + ECR Login
+- name: Login to AWS ECR
+  shell: |
+    aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 510612307309.dkr.ecr.eu-north-1.amazonaws.com
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  # delegate_to: "{{ prod_instance_ip }}"
   become: yes
-  tags: cleanup
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Check current user in remove images task
+  shell: whoami
+  become: yes
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+# Query image digest by that exact timestamp tag.
+# Prod full flow is correct: build → tag → push → digest → cleanup
+# Prod: frontend + RDS
+- name: Build frontend Docker image for ECR
+  community.docker.docker_image:
+    source: build
+    build:
+      path: "{{ docker_frontend_path }}"
+      nocache: yes
+      args:
+        BUILD_TIME: "{{ build_time }}"
+    name: serpent-repo-frontend
+    tag: "{{ build_time | regex_replace('[:T]', '-') }}"
+    state: present
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Tag frontend image with ECR URI and timestamp
+  command: docker tag serpent-repo-frontend:{{ build_time | regex_replace('[:T]', '-') }} {{ frontend_ecr_uri }}:{{ build_time | regex_replace('[:T]', '-') }}
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Push frontend image with timestamp tag to ECR
+  command: >
+    docker push {{ frontend_ecr_uri }}:{{ build_time | regex_replace('[:T]', '-') }}
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Tag frontend image as latest for ECR
+  command: >
+    docker tag serpent-repo-frontend:{{ build_time | regex_replace('[:T]', '-') }} {{ frontend_ecr_uri }}:latest
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Push frontend latest tag to ECR
+  command: >
+    docker push {{ frontend_ecr_uri }}:latest
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Get frontend image digest from ECR
+  shell: |
+    aws ecr describe-images --repository-name serpent-repo-frontend --region eu-north-1 \
+      --image-ids '[{"imageTag":"{{ build_time | regex_replace("[:T]", "-") }}"}]' \
+      --query 'imageDetails[0].imageDigest' --output text
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  register: frontend_digest_result
+  changed_when: false
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- set_fact:
+    frontend_image_digest: "{{ frontend_digest_result.stdout }}"
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- debug:
+    var: frontend_digest_result.stdout
+
+# Prod: backend + RDS
+- name: Build backend Docker image for ECR
+  community.docker.docker_image:
+    source: build
+    build:
+      path: "{{ docker_backend_path }}"
+      nocache: yes
+      args:
+        BUILD_TIME: "{{ build_time }}"
+    name: serpent-repo-backend
+    tag: "{{ build_time | regex_replace('[:T]', '-') }}"
+    state: present
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Tag backend image with ECR URI and timestamp
+  command: docker tag serpent-repo-backend:{{ build_time | regex_replace('[:T]', '-') }} {{ backend_ecr_uri }}:{{ build_time | regex_replace('[:T]', '-') }}
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Push backend image with timestamp tag to ECR
+  command: docker push {{ backend_ecr_uri }}:{{ build_time | regex_replace('[:T]', '-') }}
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Tag backend image as latest for ECR
+  command: >
+    docker tag serpent-repo-backend:{{ build_time | regex_replace('[:T]', '-') }} {{ backend_ecr_uri }}:latest
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- name: Push backend latest tag to ECR
+  command: docker push {{ backend_ecr_uri }}:latest
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+# Later in push
+
+- name: Get backend image digest from ECR
+  shell: |
+    aws ecr describe-images --repository-name serpent-repo-backend --region eu-north-1 \
+      --image-ids imageTag={{ build_time | regex_replace('[:T]', '-') }} \
+      --query 'imageDetails[0].imageDigest' --output text
+  environment:
+    AWS_DEFAULT_REGION: eu-north-1
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  register: backend_digest_result
+  changed_when: false
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
+
+- set_fact:
+    backend_image_digest: "{{ backend_digest_result.stdout }}"
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]
 
 # Dev: frontend + MySQL host
 - name: Build frontend Docker image (dev)
@@ -52,60 +159,13 @@
   when: build_env == "dev"
   tags: build-dev
 
-# Prod: backend + RDS + ECR Login
-- name: Login to AWS ECR
-  shell: |
-    aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 510612307309.dkr.ecr.eu-north-1.amazonaws.com
-  environment:
-    AWS_DEFAULT_REGION: eu-north-1
-    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
-    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
-  become: yes
-  when: build_env == "prod"
-  tags: build-prod
-
-# Prod: frontend + RDS
-- name: Build frontend Docker image for ECR
-  community.docker.docker_image:
-    source: build
-    build:
-      path: "{{ docker_frontend_path }}"
-      nocache: yes
-    name: serpent-repo-frontend
-    tag: latest
-    state: present
-  when: build_env == "prod"
-  tags: build-prod
-
-- name: Tag frontend image for ECR
-  command: docker tag serpent-repo-frontend:latest {{ frontend_ecr_uri }}:latest
-  when: build_env == "prod"
-  tags: build-prod
-
-- name: Push frontend image to ECR
-  command: docker push {{ frontend_ecr_uri }}:latest
-  when: build_env == "prod"
-  tags: build-prod
-
-# Prod: backend + RDS
-- name: Build backend Docker image for ECR
-  community.docker.docker_image:
-    source: build
-    build:
-      path: "{{ docker_backend_path }}"
-      nocache: yes
-    name: serpent-repo-backend
-    tag: latest
-    state: present
-  when: build_env == "prod"
-  tags: build-prod
-
-- name: Tag backend image for ECR
-  command: docker tag serpent-repo-backend:latest {{ backend_ecr_uri }}:latest
-  when: build_env == "prod"
-  tags: build-prod
-
-- name: Push backend image to ECR
-  command: docker push {{ backend_ecr_uri }}:latest
-  when: build_env == "prod"
-  tags: build-prod
+# is necessary to persist the digests from the build.yml play
+# so the next play (up_prod.yml) can load and use them.
+- name: Save image digests to local file
+  delegate_to: localhost
+  copy:
+    dest: /tmp/image_digests.yml
+    content: |
+      frontend_image_digest: "{{ frontend_image_digest }}"
+      backend_image_digest: "{{ backend_image_digest }}"
+  when: build_env == "prod" and inventory_hostname == groups['dev'][0]

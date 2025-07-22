@@ -3,16 +3,14 @@
 
 services:
   backend:
-    image: {{ backend_ecr_uri }}:latest
-    container_name: serpent-repo-backend
-    environment:
-      - DB_HOST={{ mysql_host }}
-      - DB_PORT={{ mysql_port }}
-      - DB_USER={{ mysql_user }}
-      - DB_PASS={{ mysql_user_password }}
-      - DB_NAME={{ mysql_database }}
+    # image: {{ backend_ecr_uri }}:latest
+    image: "{{ backend_ecr_uri }}@{{ backend_image_digest }}"
     ports:
-      - "3000:3000"
+      - "{{ backend_port }}:3000"
+    #  - "3000:3000"
+    container_name: serpent-repo-backend
+    env_file:
+      - /data/prod/.env
     networks:
       - serpent_net
     restart: always
@@ -26,10 +24,12 @@ services:
       - ./logs/backend:/app/logs
 
   frontend:
-    image: {{ frontend_ecr_uri }}:latest
+    # image: {{ frontend_ecr_uri }}:latest
+    image: "{{ frontend_ecr_uri }}@{{ frontend_image_digest }}"
     container_name: serpent-repo-frontend
     ports:
-      - "8080:80"
+      - "{{ frontend_port }}:80"
+    #  - "8080:80"
     networks:
       - serpent_net
     depends_on:

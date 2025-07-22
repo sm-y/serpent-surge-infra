@@ -4,5 +4,5 @@
 [prod]
 172.31.43.254 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 
-# [dev]
-# localhost ansible_connection=local
+[dev]
+localhost ansible_connection=local

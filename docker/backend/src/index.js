@@ -20,7 +20,17 @@ const db = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT,
   // ssl: false,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
 });
+
+// Ping DB every 5 minutes to keep connections alive
+setInterval(() => {
+  db.query("SELECT 1");
+}, 300000); // 5 minutes
 
 // Endpoint for saving scores with a POST request
 app.post("/save-score", (req, res) => {
