@@ -27,7 +27,7 @@ Flow: root setup.sh → imports Terraform state → runs Terraform → then Ansi
    - Setup disk, swap, and EFS mount
    - Install Docker, Nginx, and MySQL (RDS)
    - Build and push Docker images to AWS ECR
-     - Built with unique digests (timestamps)
+     - Built with unique SHA256 digests (plus tags: latest and timestamp-based)
      - Control node (Dev-Ubuntu) builds and pushes
      - Prod node pulls images by digest
      - Old images cleaned via lifecycle policies
@@ -38,7 +38,8 @@ You can also run individual playbooks from `ansible/playbooks/` if needed.
 
 Deployment Notes:
 
-- `up_prod.yml` pulls Docker images by digest → ensures immutability and freshness. ✅ Safe for production image traceability and cache-bypass
+- `up_prod.yml` pulls Docker images by digest → ensures immutability and freshness.
+  ✅ Safe for production image traceability and cache-bypass
 
 ---
 
